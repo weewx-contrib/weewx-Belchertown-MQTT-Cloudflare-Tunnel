@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="author" content="Ian Millard <ianmillard@icloud.com>">
+<meta name="version" content="1.0 (12 June 2026)">
+<title>Live Weather on the WeeWX Belchertown Skin with Zero Open Ports — Mosquitto · Apache · Cloudflare Tunnel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16243a;
+    --paper:#fbfcfd;
+    --panel:#f1f5f8;
+    --line:#d7dee6;
+    --chart-blue:#2f6f8f;
+    --signal:#1e7f4f;
+    --warn:#b3661a;
+    --alert:#a23b3b;
+    --muted:#5b6b7d;
+    --code-bg:#101b2c;
+    --code-ink:#dce6f0;
+    --code-accent:#7fb4d4;
+    --maxw:60rem;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,sans-serif;
+    font-size:1.0rem;line-height:1.65;
+  }
+  a{color:var(--chart-blue)}
+  a:focus-visible{outline:3px solid var(--chart-blue);outline-offset:2px}
+
+  header{background:var(--ink);color:#eaf1f7;border-bottom:4px solid var(--chart-blue)}
+  .plate{max-width:var(--maxw);margin:0 auto;padding:2.5rem 1.5rem 2rem}
+  .plate .eyebrow{
+    font-family:"IBM Plex Mono",monospace;font-size:.78rem;
+    letter-spacing:.12em;text-transform:uppercase;color:#8fb6cf;margin:0 0 .75rem;
+  }
+  h1{
+    font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;
+    font-size:clamp(1.9rem,4.5vw,3rem);line-height:1.08;margin:0 0 .5rem;letter-spacing:.01em;
+  }
+  .plate .sub{font-size:1.05rem;color:#c2d3e1;margin:0 0 1.5rem;max-width:48rem}
+  .plate .readouts{display:flex;flex-wrap:wrap;gap:.5rem;font-family:"IBM Plex Mono",monospace;font-size:.78rem}
+  .plate .readouts span{border:1px solid #33486288;background:#1d3046;padding:.3rem .6rem;border-radius:.25rem;white-space:nowrap}
+  .plate .readouts .ok{color:#9fe0bd;border-color:#1e7f4f}
+  .plate .byline{
+    font-family:"IBM Plex Mono",monospace;font-size:.78rem;
+    color:#8fb6cf;margin:1.1rem 0 0;
+  }
+  .plate .byline a{color:#aecde2}
+
+  main{max-width:var(--maxw);margin:0 auto;padding:0 1.5rem 4rem}
+
+  h2{
+    font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:1.65rem;
+    letter-spacing:.01em;margin:3rem 0 .75rem;padding-top:.75rem;border-top:3px solid var(--ink);
+  }
+  h2 .stepno{
+    font-family:"IBM Plex Mono",monospace;font-size:.8rem;font-weight:600;color:var(--chart-blue);
+    letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:.15rem;
+  }
+  h3{font-family:"Barlow Semi Condensed",sans-serif;font-weight:600;font-size:1.2rem;margin:2rem 0 .5rem}
+  h4{font-family:"IBM Plex Mono",monospace;font-size:.95rem;font-weight:600;margin:1.8rem 0 .4rem;color:var(--ink)}
+  h4::before{content:"▸ ";color:var(--warn)}
+
+  p{margin:.75rem 0}
+  ul,ol{margin:.75rem 0;padding-left:1.4rem}
+  li{margin:.35rem 0}
+  strong{font-weight:600}
+  hr{border:none;border-top:1px solid var(--line);margin:2.5rem 0}
+
+  code{
+    font-family:"IBM Plex Mono",monospace;font-size:.88em;
+    background:var(--panel);border:1px solid var(--line);border-radius:.25rem;
+    padding:.08em .35em;white-space:nowrap;
+  }
+  .codeblock{margin:1rem 0 1.25rem;border-radius:.4rem;overflow:hidden;border:1px solid #0a1424}
+  .codeblock .codelabel{
+    font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
+    background:#1a2a40;color:var(--code-accent);
+    padding:.3rem .5rem .3rem .85rem;display:flex;align-items:center;gap:1rem;
+  }
+  .codeblock .codelabel span:first-child{margin-right:auto}
+  .copybtn{
+    font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--code-accent);background:transparent;border:1px solid #34507033;border-radius:.25rem;
+    padding:.2rem .6rem;cursor:pointer;flex-shrink:0;
+  }
+  .copybtn:hover{background:#23395580;border-color:#4a6a8f;color:#cfe3f2}
+  .copybtn:focus-visible{outline:2px solid var(--code-accent);outline-offset:2px}
+  .copybtn.copied{color:#8fe0b4;border-color:#1e7f4f}
+  .codeblock pre{
+    margin:0;background:var(--code-bg);color:var(--code-ink);
+    padding:.9rem .95rem;overflow-x:auto;
+    font-family:"IBM Plex Mono",monospace;font-size:.84rem;line-height:1.55;
+  }
+  .codeblock pre code{all:unset;font-family:inherit}
+  pre .c{color:#7d92a8}
+  pre .ok{color:#8fe0b4}
+
+  .callout{
+    margin:1.25rem 0;padding:.9rem 1.1rem;border-left:4px solid var(--chart-blue);
+    background:var(--panel);border-radius:0 .3rem .3rem 0;
+  }
+  .callout .tag{
+    font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:600;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--chart-blue);display:block;margin-bottom:.3rem;
+  }
+  .callout.warn{border-color:var(--warn)}
+  .callout.warn .tag{color:var(--warn)}
+  .callout.alert{border-color:var(--alert)}
+  .callout.alert .tag{color:var(--alert)}
+  .callout.ok{border-color:var(--signal)}
+  .callout.ok .tag{color:var(--signal)}
+  .callout p:first-of-type{margin-top:0}
+  .callout p:last-child{margin-bottom:0}
+
+  table{width:100%;border-collapse:collapse;margin:1.25rem 0;font-size:.95rem}
+  th{font-family:"Barlow Semi Condensed",sans-serif;font-weight:600;text-align:left;border-bottom:2px solid var(--ink);padding:.5rem .6rem}
+  td{border-bottom:1px solid var(--line);padding:.55rem .6rem;vertical-align:top}
+  td code{white-space:normal}
+
+  nav.toc{margin:2.25rem 0 0;border:1px solid var(--line);border-radius:.4rem;padding:1rem 1.25rem;background:var(--panel)}
+  nav.toc .tag{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  nav.toc ol{margin:.5rem 0 0;padding-left:1.3rem;columns:2;column-gap:2.5rem}
+  nav.toc li{break-inside:avoid;margin:.25rem 0}
+  nav.toc a{text-decoration:none}
+  nav.toc a:hover{text-decoration:underline}
+  @media (max-width:42rem){nav.toc ol{columns:1}}
+
+  figure.arch{margin:1.75rem 0;padding:0}
+  .arch-wrap{display:grid;grid-template-columns:1fr 1fr;gap:2.75rem;position:relative}
+  .machine{border:2px solid var(--ink);border-radius:.5rem;background:#fff;overflow:hidden}
+  .machine .mname{
+    font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:1.02rem;
+    letter-spacing:.03em;background:var(--ink);color:#eaf1f7;padding:.4rem .8rem;
+  }
+  .machine ul{list-style:none;margin:0;padding:.7rem .8rem}
+  .machine li{font-family:"IBM Plex Mono",monospace;font-size:.8rem;margin:.35rem 0;padding-left:1rem;position:relative}
+  .machine li::before{content:"●";position:absolute;left:0;color:var(--chart-blue);font-size:.6rem;top:.35em}
+  .flows{margin:1.1rem 0 0;padding:0;list-style:none}
+  .flows li{
+    font-family:"IBM Plex Mono",monospace;font-size:.8rem;margin:.4rem 0;padding:.45rem .7rem;
+    background:var(--panel);border:1px solid var(--line);border-radius:.3rem;color:var(--ink);
+  }
+  .flows .dir{color:var(--chart-blue);font-weight:600}
+  .flows .lan{color:var(--signal);font-weight:600}
+  .flows .tls{color:var(--warn);font-weight:600}
+  figcaption{font-size:.85rem;color:var(--muted);margin-top:.6rem}
+  @media (max-width:42rem){.arch-wrap{grid-template-columns:1fr;gap:1rem}}
+
+  footer{border-top:3px solid var(--ink);margin-top:3.5rem;padding-top:1rem;font-size:.85rem;color:var(--muted)}
+
+  @media print{
+    header{background:#fff;color:var(--ink);border-bottom-color:var(--ink)}
+    .plate .readouts span{border-color:var(--ink);background:#fff;color:var(--ink)}
+    .codeblock pre{background:#fff;color:var(--ink);border-top:1px solid var(--line)}
+    .codeblock .codelabel{background:#fff;color:var(--ink);border-bottom:1px solid var(--line)}
+    nav.toc{display:none}
+    .copybtn{display:none}
+    h2{break-after:avoid}
+    .codeblock{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="plate">
+    <p class="eyebrow">WeeWX · Belchertown skin · field guide</p>
+    <h1>Live Weather Updates with Zero Open Ports</h1>
+    <p class="sub">Mosquitto for MQTT over WebSockets, Apache as the reverse proxy, and a Cloudflare Tunnel carrying everything — real-time readings on a public HTTPS site with no inbound ports anywhere.</p>
+    <div class="readouts">
+      <span>PUBLISH&nbsp;:1883/tcp&nbsp;LAN</span>
+      <span>WEBSOCKET&nbsp;:9001/ws&nbsp;LAN</span>
+      <span>TUNNEL&nbsp;outbound-only</span>
+      <span>PUBLIC&nbsp;:443/wss&nbsp;/mqtt</span>
+      <span class="ok">INBOUND&nbsp;PORTS&nbsp;0</span>
+    </div>
+    <p class="byline">Ian Millard · <a href="mailto:ianmillard@icloud.com">ianmillard@icloud.com</a> · Version 1.0 · 12 June 2026</p>
+  </div>
+</header>
+
+<main>
+
+<nav class="toc" aria-label="Contents">
+  <span class="tag">Contents</span>
+  <ol>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#prereq">Prerequisites</a></li>
+    <li><a href="#step1">Step 1 — Broker Pi: Mosquitto</a></li>
+    <li><a href="#step2">Step 2 — Webserver Pi: WeeWX publisher</a></li>
+    <li><a href="#step3">Step 3 — Webserver Pi: Apache proxy</a></li>
+    <li><a href="#step4">Step 4 — Belchertown skin settings</a></li>
+    <li><a href="#step5">Step 5 — Cloudflare Tunnel</a></li>
+    <li><a href="#step6">Step 6 — Verify the whole chain</a></li>
+    <li><a href="#dns01">Certificates: DNS-01 via Cloudflare</a></li>
+    <li><a href="#trouble">Troubleshooting</a></li>
+    <li><a href="#security">Security notes</a></li>
+  </ol>
+</nav>
+
+<p style="margin-top:1.75rem">This guide builds, from scratch, a WeeWX website running the Belchertown skin with real-time ("live") data updates, published to the internet through a <strong>Cloudflare Tunnel</strong> — meaning <strong>no inbound ports are opened or forwarded anywhere</strong>. Your router stays closed, your home IP never appears in DNS, and visitors get HTTPS and live WebSocket updates via Cloudflare's edge.</p>
+
+<p>It is based on a verified working installation using <strong>two machines on the same LAN</strong>:</p>
+
+<ul>
+  <li><strong>Webserver Pi</strong> — runs WeeWX (pip install), Apache, and the <code>cloudflared</code> tunnel daemon</li>
+  <li><strong>Broker Pi</strong> — runs the Mosquitto MQTT broker</li>
+</ul>
+
+<p>A single-machine layout (everything on one box) works identically — wherever the guide says <code>&lt;broker-ip&gt;</code>, use <code>127.0.0.1</code> instead, and the LAN firewall steps become unnecessary.</p>
+
+<p>Every code block below is labelled with <strong>which machine it runs on</strong> — in a two-machine setup, running the right command on the wrong box is the easiest mistake to make.</p>
+
+<h2 id="how">How it works</h2>
+
+<p>The Belchertown skin's live updates work by having each visitor's browser subscribe to an MQTT broker over WebSockets. Because the site is served over HTTPS, the WebSocket must be encrypted too (<code>wss://</code>). Rather than exposing the broker — or anything else — to the internet, everything is reached through one outbound connection.</p>
+
+<figure class="arch">
+  <div class="arch-wrap">
+    <div class="machine">
+      <div class="mname">Webserver Pi</div>
+      <ul>
+        <li>WeeWX + weewx-mqtt (publisher)</li>
+        <li>Apache 2.4 — local :443</li>
+        <li>cloudflared (outbound tunnel)</li>
+        <li>Belchertown skin (generated site)</li>
+      </ul>
+    </div>
+    <div class="machine">
+      <div class="mname">Broker Pi</div>
+      <ul>
+        <li>Mosquitto broker</li>
+        <li>listener 1883 — MQTT/TCP (LAN)</li>
+        <li>listener 9001 — WebSockets (LAN)</li>
+      </ul>
+    </div>
+  </div>
+  <ul class="flows">
+    <li><span class="lan">LAN</span>&nbsp; WeeWX <span class="dir">──publish──►</span> &lt;broker-ip&gt;:1883 &nbsp;(topic weather/loop)</li>
+    <li><span class="lan">LAN</span>&nbsp; Apache <span class="dir">──ProxyPass /mqtt, plain ws──►</span> &lt;broker-ip&gt;:9001</li>
+    <li><span class="tls">TUNNEL</span>&nbsp; cloudflared <span class="dir">──outbound only──►</span> Cloudflare edge &nbsp;(delivers traffic to Apache :443)</li>
+    <li><span class="tls">TLS</span>&nbsp; Browser <span class="dir">──https / wss://weather.example.com/mqtt──►</span> Cloudflare edge :443</li>
+  </ul>
+  <figcaption>Four connections; the only one crossing the internet is initiated <em>outward</em> by the Pi. Nothing inbound, anywhere.</figcaption>
+</figure>
+
+<table>
+  <thead><tr><th>Role</th><th>Software</th><th>Runs on</th><th>Connects to</th></tr></thead>
+  <tbody>
+    <tr><td>Publisher</td><td>WeeWX + <code>weewx-mqtt</code> extension</td><td>Webserver Pi</td><td>Broker Pi, TCP 1883 (LAN)</td></tr>
+    <tr><td>Broker (server)</td><td>Mosquitto</td><td>Broker Pi</td><td>Listens on 1883 (TCP) and 9001 (WebSockets), LAN only</td></tr>
+    <tr><td>Web/proxy</td><td>Apache + cloudflared</td><td>Webserver Pi</td><td>Apache serves the site; <code>/mqtt</code> proxied to Broker Pi 9001; cloudflared connects out to Cloudflare</td></tr>
+    <tr><td>Subscriber</td><td>Visitor's browser (Paho JS, built into Belchertown pages)</td><td>—</td><td><code>wss://your-domain/mqtt</code> via Cloudflare edge → tunnel → Apache</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <span class="tag">Naming warning</span>
+  <p>Several similarly named products exist. <strong>Mosquitto</strong> and <strong>NanoMQ</strong> are MQTT <em>brokers</em> (servers) — either can fill the broker role. <strong>NanoMQTT</strong> (DigiCert TrustCore SDK) is an embedded MQTT <em>client library</em> and <strong>cannot</strong> act as the broker; its own documentation says you still need a broker such as Mosquitto. This guide uses Mosquitto, the Debian/Raspberry Pi OS default.</p>
+</div>
+
+<div class="callout">
+  <span class="tag">No Cloudflare?</span>
+  <p>The same architecture works with ordinary port forwarding instead of a tunnel: forward 80/443 on your router to Apache, use certbot's normal HTTP-01 certificates, and skip Steps 5–6. Everything else (Steps 1–4, the verification logic, the troubleshooting) is identical. The tunnel route is recommended: it removes the attack surface entirely.</p>
+</div>
+
+<h2 id="prereq">Prerequisites</h2>
+<ul>
+  <li>Two Raspberry Pis (or equivalent Linux machines) on the same LAN; give the Broker Pi a <strong>static IP or DHCP reservation</strong> — if its address changes, everything breaks silently</li>
+  <li>WeeWX installed and generating the Belchertown skin successfully on the webserver Pi, with Apache serving the generated site locally</li>
+  <li>A domain on a <strong>Cloudflare account</strong> (free plan is sufficient — it includes Tunnel and WebSockets), using Cloudflare's nameservers</li>
+  <li>Root/sudo access on both machines</li>
+  <li>Replace <code>weather.example.com</code> with your real domain and <code>&lt;broker-ip&gt;</code> with the Broker Pi's LAN IP throughout</li>
+</ul>
+
+<h2 id="step1"><span class="stepno">Step 1 · Broker Pi</span>Install and configure Mosquitto</h2>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Broker Pi · bash</span></div>
+  <pre><code>sudo apt update
+sudo apt install mosquitto mosquitto-clients</code></pre>
+</div>
+
+<p>Edit <code>/etc/mosquitto/mosquitto.conf</code> (or create a file in <code>/etc/mosquitto/conf.d/</code>) and ensure these listeners exist:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Broker Pi · /etc/mosquitto/mosquitto.conf</span></div>
+  <pre><code><span class="c"># --- Listener 1: Standard MQTT for the WeeWX extension ---</span>
+listener 1883 0.0.0.0
+protocol mqtt
+
+<span class="c"># --- Listener 2: WebSockets for the Belchertown dashboard (via Apache proxy) ---</span>
+listener 9001 0.0.0.0
+protocol websockets
+
+<span class="c"># --- Security (home/private network setup) ---</span>
+allow_anonymous true</code></pre>
+</div>
+
+<div class="callout">
+  <span class="tag">Important details</span>
+  <ul>
+    <li>The moment any <code>listener</code> line exists, Mosquitto's implicit default listener is disabled — so the explicit <code>listener 1883</code> line is required, otherwise WeeWX loses its connection.</li>
+    <li>Both listeners bind <code>0.0.0.0</code> because the webserver Pi must reach them across the LAN. (Single-machine layout: bind both to <code>127.0.0.1</code> instead — nothing then needs to leave the box.)</li>
+    <li><code>allow_anonymous true</code> is acceptable for a home LAN. See the <a href="#security">security notes</a> for hardening.</li>
+  </ul>
+</div>
+
+<p>Restart, <strong>enable at boot</strong> (easily forgotten — without this, live updates die at the Broker Pi's next reboot), and verify both ports:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Broker Pi · bash</span></div>
+  <pre><code>sudo systemctl restart mosquitto
+sudo systemctl enable mosquitto
+ss -tln | grep -E "1883|9001"</code></pre>
+</div>
+
+<p>You should see LISTEN lines for both ports. If Mosquitto fails to start, check <code>journalctl -u mosquitto -n 30</code>.</p>
+
+<h3>Ensure ports 1883 and 9001 are open to the LAN</h3>
+
+<p>These ports stay <strong>LAN-only</strong> — they are never exposed to the internet in this design. But the <code>0.0.0.0</code> bind only makes Mosquitto listen; a host firewall on the Broker Pi can still block the webserver Pi. If <code>ufw</code> (or similar) is active:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Broker Pi · bash</span></div>
+  <pre><code>sudo ufw allow from 192.168.1.0/24 to any port 1883 proto tcp   <span class="c"># adjust to your LAN subnet</span>
+sudo ufw allow from 192.168.1.0/24 to any port 9001 proto tcp</code></pre>
+</div>
+
+<p>(If no firewall is running, nothing to do.) Then verify reachability <strong>from the webserver Pi</strong>:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>mosquitto_sub -h &lt;broker-ip&gt; -p 1883 -t '$SYS/broker/version' -C 1</code></pre>
+</div>
+
+<p>A version string back means the path is clear; a hang or “connection refused” means a firewall or listener bind is in the way.</p>
+
+<h2 id="step2"><span class="stepno">Step 2 · Webserver Pi</span>WeeWX publishes loop data to the broker</h2>
+
+<p>Install the <code>weewx-mqtt</code> extension (matthewwall's MQTT uploader), then configure it in <code>weewx.conf</code>:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · weewx.conf</span></div>
+  <pre><code>[StdRESTful]
+    [[MQTT]]
+        server_url = mqtt://&lt;broker-ip&gt;:1883/
+        topic = weather
+        unit_system = METRIC        <span class="c"># or US — must match your site's units</span>
+        binding = archive, loop
+        aggregation = aggregate
+        retain = true</code></pre>
+</div>
+
+<ul>
+  <li><code>aggregation = aggregate</code> publishes a single JSON payload to <code>weather/loop</code>, which is the format the skin expects.</li>
+  <li><code>retain = true</code> means a freshly loaded page receives the most recent reading immediately, instead of waiting for the next loop packet.</li>
+  <li>Confirm <code>user.mqtt.MQTT</code> appears in <code>restful_services</code> under <code>[Engine]</code> (the extension installer normally adds it).</li>
+</ul>
+
+<p>Restart WeeWX, then verify data is flowing — run this from the webserver Pi so it also re-proves the LAN path:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>mosquitto_sub -h &lt;broker-ip&gt; -t "weather/loop" -v</code></pre>
+</div>
+
+<div class="callout ok">
+  <span class="tag">Checkpoint</span>
+  <p>JSON should appear every loop interval (roughly every 2.5–16 seconds depending on the station). <strong>Do not continue until this works</strong> — everything downstream depends on it.</p>
+</div>
+
+<h2 id="step3"><span class="stepno">Step 3 · Webserver Pi</span>Apache reverse-proxies /mqtt to the broker</h2>
+
+<p>Enable the proxy modules:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>sudo a2enmod proxy proxy_http proxy_wstunnel</code></pre>
+</div>
+
+<p>Edit your <strong>HTTPS (port 443) virtual host</strong> — on a certbot setup this is typically <code>/etc/apache2/sites-available/000-default-le-ssl.conf</code> — and add inside the <code>&lt;VirtualHost *:443&gt;</code> block:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · 000-default-le-ssl.conf</span></div>
+  <pre><code>ProxyPass        /mqtt ws://&lt;broker-ip&gt;:9001/mqtt
+ProxyPassReverse /mqtt ws://&lt;broker-ip&gt;:9001/mqtt</code></pre>
+</div>
+
+<div class="callout">
+  <span class="tag">Important details</span>
+  <ul>
+    <li>It goes in the <strong>443</strong> vhost: cloudflared will deliver traffic to <code>https://localhost:443</code>, so that's the vhost that must carry the proxy rule.</li>
+    <li>The target scheme is lowercase <code>ws://</code> — that is what tells Apache to tunnel WebSocket traffic.</li>
+    <li>The <code>/mqtt</code> path is deliberate: Belchertown's JavaScript client connects to the <code>/mqtt</code> path by convention.</li>
+    <li>There must be only <strong>one</strong> <code>ProxyPass /mqtt</code> directive in the entire effective configuration — the first match wins, so a stale duplicate silently overrides your edit.</li>
+    <li>Apache needs <em>a</em> certificate on the 443 vhost, but with the tunnel it does <strong>not</strong> need to be valid (cloudflared will be told not to verify it). Setting up fresh with no certificate? Either generate a self-signed one (<code>sudo make-ssl-cert generate-default-snakeoil</code> + the <code>default-ssl</code> vhost) or jump to the <a href="#dns01">DNS-01 certificates section</a> to get a real Let's Encrypt cert without opening any ports — then return here.</li>
+  </ul>
+</div>
+
+<p>Test syntax and restart:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>sudo apachectl configtest &amp;&amp; sudo systemctl restart apache2</code></pre>
+</div>
+
+<h3>Nginx equivalent</h3>
+
+<p>If your site runs on nginx instead, the matching block inside the existing <code>server { listen 443 ssl; }</code> is:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver · nginx site config</span></div>
+  <pre><code>location /mqtt {
+    proxy_pass http://&lt;broker-ip&gt;:9001/mqtt;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 3600s;    <span class="c"># loop packets are seconds apart; default 60s drops idle connections</span>
+    proxy_send_timeout 3600s;
+}</code></pre>
+</div>
+
+<h2 id="step4"><span class="stepno">Step 4 · Webserver Pi</span>Belchertown skin settings</h2>
+
+<p>In <code>weewx.conf</code>, under the Belchertown report (preferred over editing <code>skin.conf</code>, so skin upgrades don't overwrite it):</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · weewx.conf</span></div>
+  <pre><code>[StdReport]
+    [[Belchertown]]
+        skin = Belchertown
+        [[[Extras]]]
+            mqtt_websockets_enabled = 1
+            mqtt_websockets_host = "weather.example.com"
+            mqtt_websockets_port = 443
+            mqtt_websockets_ssl = 1
+            mqtt_websockets_topic = "weather/loop"</code></pre>
+</div>
+
+<div class="callout warn">
+  <span class="tag">Critical points — the most common mistakes</span>
+  <ul>
+    <li><code>mqtt_websockets_host</code> is what the <strong>visitor's browser</strong> connects to. It is therefore your public <strong>website hostname</strong> — not the Broker Pi's IP, not <code>localhost</code>, and not port 9001. The browser goes to Cloudflare's edge; only Apache talks to the broker.</li>
+    <li>Port <strong>443</strong> and ssl <strong>1</strong> are correct because the visitor's connection terminates at Cloudflare's edge over TLS, regardless of what happens behind the tunnel.</li>
+    <li>Check <code>skin.conf</code> doesn't carry conflicting old values — settings in <code>weewx.conf</code> override <code>skin.conf</code>, but only if they're actually present there.</li>
+    <li><strong>Regenerate the site after any change</strong> — these values are baked into the published JavaScript.</li>
+  </ul>
+</div>
+
+<p>The regeneration command depends on how WeeWX was installed:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code><span class="c"># pip install (WeeWX runs in a virtual environment) — no sudo needed:</span>
+source ~/weewx-venv/bin/activate
+weectl report run
+
+<span class="c"># Debian/package install:</span>
+sudo weectl report run
+
+<span class="c"># Older WeeWX (4.x and earlier):</span>
+sudo wee_reports</code></pre>
+</div>
+
+<p>If you skip the regeneration, the deployed pages keep trying the old host/port no matter what you've fixed elsewhere.</p>
+
+<h2 id="step5"><span class="stepno">Step 5 · Webserver Pi</span>Connect Cloudflare Tunnel</h2>
+
+<h3>5a — Install cloudflared</h3>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>sudo mkdir -p --mode=0755 /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt update &amp;&amp; sudo apt install cloudflared</code></pre>
+</div>
+
+<h3>5b — Create the tunnel and connect the Pi</h3>
+
+<p>In <strong>Cloudflare One</strong> (one.dash.cloudflare.com) go to <strong>Networks → Connectors → Cloudflare Tunnels → Create a tunnel</strong> → connector type <strong>Cloudflared</strong> → name it (e.g. <code>weather-pi</code>) → save. The dashboard shows an install command containing a token — run it on the webserver Pi:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>sudo cloudflared service install &lt;token-from-dashboard&gt;</code></pre>
+</div>
+
+<p>Within seconds the tunnel should show <strong>HEALTHY</strong> in the dashboard. Verify locally with <code>systemctl status cloudflared</code>.</p>
+
+<div class="callout warn">
+  <span class="tag">Run the install command exactly once</span>
+  <p>Running it twice (or creating two tunnels) enrols the Pi under two different tunnel UUIDs, and DNS pointing at the wrong one produces error 1033 later. If in doubt, the UUID the running service actually registered is in the logs: <code>sudo journalctl -u cloudflared | grep tunnelID | tail -1</code></p>
+</div>
+
+<h3>5c — Publish the application (the route)</h3>
+
+<p>On the tunnel's page: <strong>Published application routes → Add</strong>:</p>
+<ul>
+  <li>Subdomain: <em>(blank)</em> · Domain: your domain · Path: <em>(blank)</em></li>
+  <li>Service: <strong>HTTPS</strong> · URL: <code>localhost:443</code></li>
+  <li><strong>Origin configurations → TLS → No TLS Verify: ON</strong></li>
+</ul>
+
+<p>The No TLS Verify toggle is required: cloudflared connects to <code>localhost:443</code> and would otherwise reject Apache's certificate, which (if valid at all) names your domain, not <code>localhost</code>. The hop is localhost-only, so nothing is lost. If you prefer a <em>verified</em> origin instead, set <strong>Origin Server Name</strong> to your domain and keep a valid certificate on Apache via the <a href="#dns01">DNS-01 certificates section</a>.</p>
+
+<div class="callout">
+  <span class="tag">Sanity check</span>
+  <p>Back on the tunnel list, the <strong>Routes</strong> column must now show your hostname. If it reads <code>--</code>, the route didn't save — the tunnel is connected but routing nothing, and the site cannot work.</p>
+</div>
+
+<h3>5d — DNS: point the domain at the tunnel</h3>
+
+<p>The route save normally creates the DNS record automatically (it appears in DNS → Records as a proxied "Tunnel"-type record). If it doesn't, create it manually: <strong>Type CNAME · Name <code>@</code> · Target <code>&lt;tunnel-id&gt;.cfargotunnel.com</code> · Proxied</strong> (orange cloud — mandatory), where <code>&lt;tunnel-id&gt;</code> is the UUID from the tunnel's overview page (or the <code>journalctl</code> command above — the <em>running</em> connector's UUID is the truth).</p>
+
+<div class="callout warn">
+  <span class="tag">Ordering trap (migrations only)</span>
+  <p>If an old A record for the bare domain points at your home IP, the tunnel record can't be created until it's removed — but deleting it <em>before</em> the replacement exists plants a "no such record" answer in public resolvers' negative caches for up to <strong>30 minutes</strong> (the zone's 1800s negative TTL). Do the delete and the create back-to-back, and don't panic if resolution takes a while to return. The cache-proof way to check the zone's true state is to ask the authoritative nameserver directly:</p>
+</div>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Any machine · bash</span></div>
+  <pre><code>sudo apt install dnsutils
+dig weather.example.com @&lt;your-zone-ns&gt;.ns.cloudflare.com A +norecurse</code></pre>
+</div>
+
+<p>(Your two assigned nameservers are shown on the domain's DNS page.) An ANSWER section with Cloudflare edge IPs (104.x / 172.6x) means the zone is correct and the resolvers will catch up. You can hurry 1.1.1.1 along at <code>https://one.one.one.one/purge-cache/</code>.</p>
+
+<p>Also confirm the zone-level <strong>Network → WebSockets</strong> toggle is <strong>On</strong> (main dashboard → your domain → Network) — it defaults on, but verify.</p>
+
+<h2 id="step6"><span class="stepno">Step 6 · Both machines</span>Verify the whole chain, in dependency order</h2>
+
+<p>Each test isolates one link. Run them in order; the first failure tells you exactly which layer to fix.</p>
+
+<h3>a) Broker listening</h3>
+<div class="codeblock">
+  <div class="codelabel"><span>Broker Pi · bash</span></div>
+  <pre><code>ss -tln | grep -E "1883|9001"</code></pre>
+</div>
+
+<h3>b) Data flowing in, across the LAN</h3>
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>mosquitto_sub -h &lt;broker-ip&gt; -t "weather/loop" -v</code></pre>
+</div>
+
+<h3>c) WebSocket handshake directly against the broker (bypasses Apache and the tunnel)</h3>
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span><span class="ok">expect: HTTP/1.1 101</span></div>
+  <pre><code>curl -i -N http://&lt;broker-ip&gt;:9001/mqtt \
+  -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGVzdDEyMzQ1Njc4OTA=" \
+  -H "Sec-WebSocket-Protocol: mqtt"</code></pre>
+</div>
+
+<h3>d) WebSocket handshake via Apache locally (bypasses the tunnel)</h3>
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span><span class="ok">expect: HTTP/1.1 101</span></div>
+  <pre><code>curl -i -N -k https://localhost/mqtt -H "Host: weather.example.com" \
+  -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGVzdDEyMzQ1Njc4OTA=" \
+  -H "Sec-WebSocket-Protocol: mqtt"</code></pre>
+</div>
+
+<h3>e) Site via the full public path (Cloudflare edge → tunnel → Apache)</h3>
+<div class="codeblock">
+  <div class="codelabel"><span>Any machine · bash</span><span class="ok">expect: HTTP/2 200, server: cloudflare</span></div>
+  <pre><code>curl -I https://weather.example.com/</code></pre>
+</div>
+
+<h3>f) WebSocket via the full public path</h3>
+<div class="codeblock">
+  <div class="codelabel"><span>Any machine · bash</span><span class="ok">expect: HTTP/1.1 101</span></div>
+  <pre><code>curl -i -N --http1.1 https://weather.example.com/mqtt \
+  -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGVzdDEyMzQ1Njc4OTA=" \
+  -H "Sec-WebSocket-Protocol: mqtt"</code></pre>
+</div>
+
+<div class="callout alert">
+  <span class="tag">--http1.1 is mandatory through Cloudflare</span>
+  <p>The edge negotiates HTTP/2 with curl by default, and <code>Connection: Upgrade</code> is illegal in HTTP/2 — the edge rejects the request with a 502 <em>before it ever reaches the tunnel</em> (cloudflared logs nothing). Real browsers handshake correctly, so the site can be working perfectly while the un-flagged curl claims 502. This only affects the synthetic test, not visitors.</p>
+</div>
+
+<h3>g) Browser</h3>
+<p>Hard-refresh the site (Ctrl+Shift+R), open developer tools (F12) → Network tab → filter “WS”. You should see a connection to <code>wss://weather.example.com/mqtt</code> with status <strong>101</strong>, frames arriving on each loop packet, and the page's connection indicator turning green with values updating live.</p>
+
+<div class="callout ok">
+  <span class="tag">Done</span>
+  <p>When all of a–g pass, you're finished — and at no point did anything require an open inbound port. If you migrated from a port-forwarded setup, this is the moment to <strong>delete the old 80/443 forwards on your router</strong> and re-run e–g (results should be identical, since nothing has used the forwards since DNS switched to the tunnel).</p>
+</div>
+
+<h2 id="dns01"><span class="stepno">Certificates</span>Zero open ports — DNS-01 via the Cloudflare plugin</h2>
+
+<p>With no inbound ports, certbot's default <strong>HTTP-01</strong> challenge can never reach your server, so certificates can't be issued or renewed that way. You have three options:</p>
+
+<ol>
+  <li><strong>No TLS Verify (the default in this guide)</strong> — let Apache's certificate be self-signed or lapsed; cloudflared ignores it, visitors only ever see Cloudflare's edge certificate. Zero maintenance.</li>
+  <li><strong>Cloudflare Origin Certificate</strong> — a free 15-year cert issued by Cloudflare, valid only between Cloudflare and your origin. Generate under SSL/TLS → Origin Server and install in Apache.</li>
+  <li><strong>A real Let's Encrypt certificate via DNS-01</strong> — proves domain control by publishing a DNS TXT record instead of answering an inbound HTTP request. Since your DNS is on Cloudflare, certbot can automate this completely with the Cloudflare plugin. This is the right choice if you want a publicly valid certificate on the origin (e.g. for verified-origin TLS, other LAN services, or simply tidiness).</li>
+</ol>
+
+<p>Here's option 3 in full.</p>
+
+<h3>C1 — Install the plugin</h3>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>sudo apt install python3-certbot-dns-cloudflare</code></pre>
+</div>
+
+<p>(Confirm certbot itself is installed: <code>certbot --version</code>.)</p>
+
+<h3>C2 — Create a scoped Cloudflare API token</h3>
+
+<p>In the Cloudflare dashboard: click the profile icon (top right) → <strong>My Profile → API Tokens → Create Token</strong> → use the <strong>“Edit zone DNS”</strong> template:</p>
+
+<ul>
+  <li>Permissions: <strong>Zone · DNS · Edit</strong> (the template sets this)</li>
+  <li>Zone Resources: <strong>Include · Specific zone · <code>weather.example.com</code></strong> — scope it to this one zone, never “All zones”</li>
+  <li>Create the token and <strong>copy it immediately</strong> (it's shown once)</li>
+</ul>
+
+<div class="callout warn">
+  <span class="tag">Token, not Global API Key</span>
+  <p>Do not use your Global API Key — the scoped token can only edit this zone's DNS, which is exactly the blast radius you want for a credential sitting on a Pi.</p>
+</div>
+
+<h3>C3 — Store the token securely</h3>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>sudo mkdir -p /root/.secrets/certbot
+sudo nano /root/.secrets/certbot/cloudflare.ini</code></pre>
+</div>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · /root/.secrets/certbot/cloudflare.ini</span></div>
+  <pre><code><span class="c"># Cloudflare API token with Zone:DNS:Edit on the weather zone only</span>
+dns_cloudflare_api_token = &lt;paste-your-token-here&gt;</code></pre>
+</div>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>sudo chmod 600 /root/.secrets/certbot/cloudflare.ini</code></pre>
+</div>
+
+<p>Certbot refuses world-readable credential files — the <code>chmod 600</code> is mandatory, not cosmetic.</p>
+
+<h3>C4 — Issue (or re-issue) the certificate via DNS-01</h3>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>sudo certbot certonly --dns-cloudflare \
+  --dns-cloudflare-credentials /root/.secrets/certbot/cloudflare.ini \
+  --dns-cloudflare-propagation-seconds 30 \
+  -d weather.example.com -d www.weather.example.com</code></pre>
+</div>
+
+<p>What happens: certbot asks Cloudflare's API to create a <code>_acme-challenge</code> TXT record, waits the propagation delay, Let's Encrypt verifies it over DNS, the cert is issued, and the TXT record is removed — no inbound connection at any point. If a certificate for the same names already exists (from the HTTP-01 days), certbot asks whether to replace it; answering yes also <strong>rewrites the renewal configuration</strong> in <code>/etc/letsencrypt/renewal/weather.example.com.conf</code> to use DNS-01 from now on — that single run <em>is</em> the switch-over.</p>
+
+<p>Drop the <code>-d www...</code> if you don't serve a www name. If validation is flaky, raise <code>--dns-cloudflare-propagation-seconds</code> to 60.</p>
+
+<h3>C5 — Verify renewals work hands-off</h3>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span><span class="ok">expect: all simulated renewals succeeded</span></div>
+  <pre><code>sudo certbot renew --dry-run</code></pre>
+</div>
+
+<p>A clean dry-run means renewals will keep working forever with no ports open. Certbot's systemd timer (installed by default on Debian) handles the schedule. One Apache-specific note: <code>certonly</code> doesn't reload Apache after a real renewal, so add a deploy hook once:</p>
+
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>sudo sh -c 'printf "#!/bin/sh\nsystemctl reload apache2\n" > /etc/letsencrypt/renewal-hooks/deploy/reload-apache.sh'
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-apache.sh</code></pre>
+</div>
+
+<h3>C6 — (Optional) switch the tunnel to verified-origin TLS</h3>
+
+<p>With a valid cert on Apache you can replace No TLS Verify with proper verification: on the tunnel route's <strong>Origin configurations → TLS</strong>, turn <strong>No TLS Verify OFF</strong> and set <strong>Origin Server Name</strong> to <code>weather.example.com</code> (so cloudflared validates the cert against your domain rather than <code>localhost</code>). Re-run verification test (e) afterwards — an <code>x509</code> error in <code>journalctl -u cloudflared</code> means the cert/name don't match and you should revert to No TLS Verify while investigating.</p>
+
+<h2 id="trouble">Troubleshooting</h2>
+
+<p>All of these were encountered (or anticipated) while building the reference installation. Work out <strong>which hop fails first</strong> using the Step 6 ladder, then find the symptom below.</p>
+
+<h3>Broker layer</h3>
+
+<h4>Direct broker curl (test c) fails</h4>
+<p>Either Mosquitto's WebSocket listener isn't healthy, or the LAN path is blocked. On the Broker Pi: check <code>journalctl -u mosquitto -n 30</code> for a config error, confirm <code>protocol websockets</code> sits directly under the <code>listener 9001</code> line, confirm the bind is <code>0.0.0.0</code> (not <code>127.0.0.1</code>, which is unreachable from another machine), and confirm the running process was started <em>after</em> the config was written (<code>sudo systemctl restart mosquitto</code>). Then re-check the firewall rules from Step 1.</p>
+
+<h4>Live updates work, then die after a reboot</h4>
+<p>The broker service isn't enabled on the Broker Pi. <code>systemctl status mosquitto</code> shows <code>disabled</code> in the <code>Loaded:</code> line. Fix: <code>sudo systemctl enable mosquitto</code>.</p>
+
+<h4>Two brokers fighting over port 1883</h4>
+<p>If both Mosquitto and another broker (e.g. NanoMQ) are installed on the same machine, only one can bind 1883. Disable the one you're not using: <code>sudo systemctl disable --now &lt;other-broker&gt;</code>. Note that configuring a broker that was never installed achieves nothing — a <code>command not found</code> for the broker binary means the config file you wrote has no process reading it. <code>which &lt;binary&gt;</code> and <code>ps aux | grep &lt;name&gt;</code> confirm what's actually installed and running.</p>
+
+<h3>Apache layer</h3>
+
+<h4>Local Apache curl (test d) returns 404</h4>
+<p>Apache isn't matching the <code>/mqtt</code> location: ProxyPass missing, in the wrong vhost, or Apache wasn't restarted.</p>
+
+<h4>Local Apache curl (test d) returns 503</h4>
+<p>Apache matched the rule but cannot connect to the broker. The error log names the target — <code>sudo tail /var/log/apache2/error.log</code> →</p>
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · /var/log/apache2/error.log</span></div>
+  <pre><code>(111)Connection refused: AH00957: ws: attempt to connect to &lt;ip&gt;:&lt;port&gt; failed</code></pre>
+</div>
+<p>Check the broker is listening (<code>ss -tln</code> on the Broker Pi), the firewall (Step 1), and the ProxyPass IP/port. Also hunt for a <strong>duplicate</strong> <code>ProxyPass /mqtt</code> winning over your edit (first match applies):</p>
+<div class="codeblock">
+  <div class="codelabel"><span>Webserver Pi · bash</span></div>
+  <pre><code>grep -Rn "ProxyPass" /etc/apache2/ | grep -v "#"</code></pre>
+</div>
+<p>Note the <strong>capital <code>-R</code></strong>: lowercase <code>-r</code> does <em>not</em> follow the symlinks in <code>sites-enabled/</code>, and will hide directives from you. Finally, beware the file being <strong>edited and then overwritten</strong> — an editor window still holding the old version, saved after a <code>sed</code> fix, silently reverts it; always re-<code>grep</code> immediately before restarting Apache.</p>
+
+<h4>Local Apache curl returns 400</h4>
+<p>The upgrade headers aren't being tunnelled: confirm <code>proxy_wstunnel</code> is enabled (<code>apachectl -M | grep wstunnel</code>) and the target scheme is <code>ws://</code>.</p>
+
+<h3>Tunnel / DNS layer</h3>
+
+<h4>Could not resolve host, or DNS returns only an SOA (no Answer)</h4>
+<p>The tunnel's DNS record isn't published. Check three things: the <strong>Routes</strong> column on the tunnel isn't <code>--</code> (Step 5c), the record exists and is <strong>Proxied</strong>, and you aren't just seeing a stale negative cache — the SOA serial not changing between queries means the zone genuinely hasn't changed; use the authoritative <code>dig</code> from Step 5d to bypass all caches.</p>
+
+<h4>HTTP 530, body "error code: 1033"</h4>
+<p>Cloudflare can't find a connected tunnel for the UUID in DNS. Compare the record's <code>&lt;uuid&gt;.cfargotunnel.com</code> against <code>sudo journalctl -u cloudflared | grep tunnelID | tail -1</code>. A mismatch is the double-enrolment trap from Step 5b — point DNS at the running UUID.</p>
+
+<h4>502 on the WebSocket curl with nothing in the cloudflared journal</h4>
+<p>The edge rejected it before the tunnel: almost always the missing <code>--http1.1</code> flag (Step 6f); also confirm the zone's <strong>Network → WebSockets</strong> toggle is On.</p>
+
+<h4>502 with ERR lines in the cloudflared journal</h4>
+<p>cloudflared reached Apache and failed: an <code>x509</code> message means No TLS Verify isn't actually enabled on the route (or, after C6, the cert/Origin Server Name don't match); <code>connection refused</code> means Apache is down (<code>systemctl status apache2</code>).</p>
+
+<h4>Everything intermittently broken right after switching over</h4>
+<p>Give your router a minute if it was just reconfigured, and hard-refresh the browser; stale error pages and settling network gear produce convincing false alarms.</p>
+
+<h3>Page layer</h3>
+
+<h4>Page loads, connects, but shows no data</h4>
+<p>The browser reaches the broker but nothing is published on the topic it subscribed to. Confirm test (b), and confirm <code>mqtt_websockets_topic</code> matches <code>&lt;topic&gt;/loop</code> from the WeeWX <code>[[MQTT]]</code> section (<code>weather/loop</code> in this guide). Mismatched units between <code>unit_system</code> and the site's configuration cause wrong-looking numbers rather than no numbers.</p>
+
+<h4>Browser error NS_ERROR_WEBSOCKET_CONNECTION_REFUSED (Firefox) or failed WS connection</h4>
+<p>The handshake didn't return 101 somewhere along the chain. Run the Step 6 ladder from (c) upward and find the first failing hop.</p>
+
+<h4>Changed a Belchertown setting but the page behaves as before</h4>
+<p>You didn't regenerate the site (Step 4) — the old values are still baked into the published JavaScript. Re-run the report and hard-refresh.</p>
+
+<h2 id="security">Security notes</h2>
+<ul>
+  <li><strong>No inbound ports exist anywhere in this design.</strong> The router forwards nothing; the only public entry point is Cloudflare's edge, reached by cloudflared's outbound connection. Your home IP appears nowhere in DNS.</li>
+  <li>Ports 1883 and 9001 are reachable on the LAN only and must <strong>never</strong> be forwarded on the router. For tighter LAN control, restrict the Broker Pi's firewall rules to the webserver Pi's IP only (<code>sudo ufw allow from &lt;webserver-ip&gt; to any port 9001 proto tcp</code>, and likewise 1883 if WeeWX is the only publisher).</li>
+  <li><code>allow_anonymous true</code> means anything on the LAN can publish. For hardening, set it to <code>false</code>, create a password file (<code>mosquitto_passwd -c /etc/mosquitto/passwd weewx</code>), reference it with <code>password_file /etc/mosquitto/passwd</code>, and give WeeWX the credentials: <code>server_url = mqtt://weewx:PASSWORD@&lt;broker-ip&gt;:1883/</code>. Browser subscribers come through the proxy and can be left anonymous or given a read-only ACL.</li>
+  <li>The Cloudflare API token (DNS-01 section) should be scoped to <strong>Zone:DNS:Edit on the single zone</strong> and stored root-only (<code>chmod 600</code>). If it ever leaks, revoke it in the dashboard — it cannot touch anything but this zone's DNS.</li>
+  <li>Origin TLS: No TLS Verify is safe here because the cloudflared→Apache hop never leaves the machine. Use the DNS-01 section if you want a verified origin instead.</li>
+</ul>
+
+<footer>
+  <p>Reference installation: WeeWX (pip install, Belchertown skin) + Apache 2.4 + cloudflared on one Raspberry Pi; Mosquitto (Debian packages) on a second Raspberry Pi on the same LAN; public access via Cloudflare Tunnel with no open inbound ports.</p>
+  <p>Ian Millard · <a href="mailto:ianmillard@icloud.com">ianmillard@icloud.com</a> · Version 1.0 · 12 June 2026</p>
+</footer>
+
+</main>
+
+<script>
+(function(){
+  document.querySelectorAll('.codeblock').forEach(function(block){
+    var label = block.querySelector('.codelabel');
+    var pre = block.querySelector('pre');
+    if(!label || !pre) return;
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'copybtn';
+    btn.textContent = 'Copy';
+    btn.setAttribute('aria-label','Copy code to clipboard');
+
+    btn.addEventListener('click', function(){
+      // Copy the commands/config only — strip expected-output lines (.ok spans)
+      var clone = pre.cloneNode(true);
+      clone.querySelectorAll('.ok').forEach(function(el){ el.remove(); });
+      var text = clone.textContent.replace(/\n{3,}/g,'\n\n').replace(/\s+$/,'') + '\n';
+
+      function done(){
+        btn.textContent = 'Copied ✓';
+        btn.classList.add('copied');
+        setTimeout(function(){
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 1600);
+      }
+      function fail(){
+        btn.textContent = 'Press Ctrl+C';
+        setTimeout(function(){ btn.textContent = 'Copy'; }, 1600);
+      }
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function(){
+          legacyCopy(text) ? done() : fail();
+        });
+      } else {
+        legacyCopy(text) ? done() : fail();
+      }
+    });
+
+    function legacyCopy(text){
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    label.appendChild(btn);
+  });
+})();
+</script>
+</body>
+</html>
